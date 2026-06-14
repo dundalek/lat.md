@@ -136,11 +136,15 @@ async function tryResolveSourceRef(
   }
 }
 
-export async function checkMd(latticeDir: string): Promise<CheckResult> {
+export async function checkMd(
+  latticeDir: string,
+  opts?: { projectRoot?: string; docsOnly?: boolean },
+): Promise<CheckResult> {
   clearSymbolCache();
-  const projectRoot = dirname(latticeDir);
+  const projectRoot = opts?.projectRoot ?? dirname(latticeDir);
+  const docsOnly = opts?.docsOnly ?? false;
   const files = await listLatticeFiles(latticeDir);
-  const allSections = await loadAllSections(latticeDir);
+  const allSections = await loadAllSections(latticeDir, projectRoot);
   const flat = flattenSections(allSections);
   const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
   const fileIndex = buildFileIndex(allSections);
@@ -166,15 +170,24 @@ export async function checkMd(latticeDir: string): Promise<CheckResult> {
           message: ambiguousMessage(ref.target, ambiguous, suggested),
         });
       } else if (!sectionIds.has(resolved.toLowerCase())) {
-        // Try resolving as a source code reference (e.g. [[src/foo.ts#bar]])
-        const sourceErr = await tryResolveSourceRef(ref.target, projectRoot);
-        if (sourceErr !== null) {
+        if (docsOnly) {
           errors.push({
             file: relPath,
             line: ref.line,
             target: ref.target,
-            message: sourceErr,
+            message: `broken link [[${ref.target}]] — no matching section found`,
           });
+        } else {
+          // Try resolving as a source code reference (e.g. [[src/foo.ts#bar]])
+          const sourceErr = await tryResolveSourceRef(ref.target, projectRoot);
+          if (sourceErr !== null) {
+            errors.push({
+              file: relPath,
+              line: ref.line,
+              target: ref.target,
+              message: sourceErr,
+            });
+          }
         }
       }
     }
@@ -183,14 +196,17 @@ export async function checkMd(latticeDir: string): Promise<CheckResult> {
   return { errors, files: countByExt(files) };
 }
 
-export async function checkCodeRefs(latticeDir: string): Promise<CheckResult> {
-  const projectRoot = dirname(latticeDir);
-  const allSections = await loadAllSections(latticeDir);
+export async function checkCodeRefs(
+  latticeDir: string,
+  projectRoot?: string,
+): Promise<CheckResult> {
+  const root = projectRoot ?? dirname(latticeDir);
+  const allSections = await loadAllSections(latticeDir, root);
   const flat = flattenSections(allSections);
   const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
   const fileIndex = buildFileIndex(allSections);
 
-  const scan = await scanCodeRefs(projectRoot);
+  const scan = await scanCodeRefs(root);
   const errors: CheckError[] = [];
 
   const mentionedSections = new Set<string>();
@@ -201,7 +217,7 @@ export async function checkCodeRefs(latticeDir: string): Promise<CheckResult> {
       fileIndex,
     );
     mentionedSections.add(resolved.toLowerCase());
-    const displayPath = relative(process.cwd(), join(projectRoot, ref.file));
+    const displayPath = relative(process.cwd(), join(root, ref.file));
     if (ambiguous) {
       errors.push({
         file: displayPath,
@@ -225,7 +241,7 @@ export async function checkCodeRefs(latticeDir: string): Promise<CheckResult> {
     const fm = parseFrontmatter(content);
     if (!fm.requireCodeMention) continue;
 
-    const sections = parseSections(file, content, projectRoot);
+    const sections = parseSections(file, content, root);
     const fileSections = flattenSections(sections);
     const leafSections = fileSections.filter((s) => s.children.length === 0);
     const relPath = relative(process.cwd(), file);
@@ -396,14 +412,17 @@ function bodyTextLength(body: string): number {
   return body.replace(/\[\[[^\]]*\]\]/g, '').length;
 }
 
-export async function checkSections(latticeDir: string): Promise<CheckError[]> {
-  const projectRoot = dirname(latticeDir);
+export async function checkSections(
+  latticeDir: string,
+  projectRoot?: string,
+): Promise<CheckError[]> {
+  const root = projectRoot ?? dirname(latticeDir);
   const files = await listLatticeFiles(latticeDir);
   const errors: CheckError[] = [];
 
   for (const file of files) {
     const content = await readFile(file, 'utf-8');
-    const sections = parseSections(file, content, projectRoot);
+    const sections = parseSections(file, content, root);
     const flat = flattenSections(sections);
     const relPath = relative(process.cwd(), file);
 
@@ -485,10 +504,16 @@ function formatErrorCount(count: number, s: Styler): string {
 
 export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
   const startTime = Date.now();
-  const md = await checkMd(ctx.latDir);
-  const code = await checkCodeRefs(ctx.latDir);
+  const checkOpts = {
+    projectRoot: ctx.projectRoot,
+    docsOnly: ctx.docsOnly,
+  };
+  const md = await checkMd(ctx.latDir, checkOpts);
+  const code = ctx.docsOnly
+    ? { errors: [], files: {} as FileStats }
+    : await checkCodeRefs(ctx.latDir, ctx.projectRoot);
   const indexErrors = await checkIndex(ctx.latDir);
-  const sectionErrors = await checkSections(ctx.latDir);
+  const sectionErrors = await checkSections(ctx.latDir, ctx.projectRoot);
   const elapsed = Date.now() - startTime;
 
   const allErrors = [...md.errors, ...code.errors];
@@ -559,7 +584,7 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
   }
 
   // Suggest ripgrep if check was slow (>1s) and rg is not available
-  if (elapsed > 1000) {
+  if (elapsed > 1000 && !ctx.docsOnly) {
     const { hasRipgrep } = await import('../code-refs.js');
     if (!(await hasRipgrep())) {
       lines.push(
@@ -576,7 +601,10 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
 }
 
 export async function checkMdCommand(ctx: CmdContext): Promise<CmdResult> {
-  const { errors, files } = await checkMd(ctx.latDir);
+  const { errors, files } = await checkMd(ctx.latDir, {
+    projectRoot: ctx.projectRoot,
+    docsOnly: ctx.docsOnly,
+  });
   const s = ctx.styler;
   const lines: string[] = [formatFileStats(files, s)];
 
@@ -594,7 +622,12 @@ export async function checkMdCommand(ctx: CmdContext): Promise<CmdResult> {
 export async function checkCodeRefsCommand(
   ctx: CmdContext,
 ): Promise<CmdResult> {
-  const { errors, files } = await checkCodeRefs(ctx.latDir);
+  if (ctx.docsOnly) {
+    return {
+      output: ctx.styler.dim('code-refs: Skipped (docs-only mode)'),
+    };
+  }
+  const { errors, files } = await checkCodeRefs(ctx.latDir, ctx.projectRoot);
   const s = ctx.styler;
   const lines: string[] = [formatFileStats(files, s)];
 
@@ -628,7 +661,7 @@ export async function checkIndexCommand(ctx: CmdContext): Promise<CmdResult> {
 export async function checkSectionsCommand(
   ctx: CmdContext,
 ): Promise<CmdResult> {
-  const errors = await checkSections(ctx.latDir);
+  const errors = await checkSections(ctx.latDir, ctx.projectRoot);
   const s = ctx.styler;
   const lines: string[] = [];
 

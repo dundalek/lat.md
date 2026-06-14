@@ -185,8 +185,8 @@ export async function findRefs(
 ): Promise<RefsResult> {
   query = query.replace(/^\[\[|\]\]$/g, '');
 
-  // Source file queries bypass section resolution
-  if (isSourceQuery(query, ctx.projectRoot)) {
+  // Source file queries bypass section resolution (not available in docs-only mode)
+  if (!ctx.docsOnly && isSourceQuery(query, ctx.projectRoot)) {
     return findSourceRefs(ctx.latDir, ctx.projectRoot, query, scope);
   }
 
@@ -249,7 +249,7 @@ export async function findRefs(
     }
   }
 
-  if (scope === 'code' || scope === 'md+code') {
+  if (!ctx.docsOnly && (scope === 'code' || scope === 'md+code')) {
     const { refs: scannedRefs } = await scanCodeRefs(ctx.projectRoot);
     for (const ref of scannedRefs) {
       const { resolved: codeResolved } = resolveRef(

@@ -32,9 +32,10 @@ export async function indexSections(
   db: Client,
   provider: EmbeddingProvider,
   key?: string,
+  projectRoot?: string,
 ): Promise<IndexStats> {
-  const projectRoot = dirname(latDir);
-  const allSections = await loadAllSections(latDir);
+  const root = projectRoot ?? dirname(latDir);
+  const allSections = await loadAllSections(latDir, root);
   const flat = flattenSections(allSections);
 
   // Build current state: id -> { section, content, hash }
@@ -43,7 +44,7 @@ export async function indexSections(
     { section: Section; content: string; hash: string }
   >();
   for (const s of flat) {
-    const text = await sectionContent(s, projectRoot);
+    const text = await sectionContent(s, root);
     current.set(s.id, { section: s, content: text, hash: hashContent(text) });
   }
 

@@ -28,6 +28,7 @@ export async function startMcpServer(): Promise<void> {
     projectRoot,
     styler: plainStyler,
     mode: 'mcp',
+    docsOnly: false,
   };
 
   const server = new McpServer({

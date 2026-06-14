@@ -43,6 +43,7 @@ function testCtx(name: string): CmdContext {
     projectRoot: caseDir(name),
     styler: plainStyler,
     mode: 'cli',
+    docsOnly: false,
   };
 }
 
@@ -971,6 +972,7 @@ describe('source-file-refs', () => {
       projectRoot,
       styler: plainStyler,
       mode: 'cli' as const,
+      docsOnly: false,
     };
     const result = await findRefs(ctx, 'src/app.ts#greet', 'md');
     expect(result.kind).toBe('found');
@@ -988,6 +990,7 @@ describe('source-file-refs', () => {
       projectRoot,
       styler: plainStyler,
       mode: 'cli' as const,
+      docsOnly: false,
     };
     const result = await findRefs(ctx, 'src/app.ts', 'md');
     expect(result.kind).toBe('found');
@@ -1004,6 +1007,7 @@ describe('source-file-refs', () => {
       projectRoot,
       styler: plainStyler,
       mode: 'cli' as const,
+      docsOnly: false,
     };
     // Nonexistent file falls through to section resolution, which also fails
     const result = await findRefs(ctx, 'src/nonexistent.ts#foo', 'md');

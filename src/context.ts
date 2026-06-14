@@ -27,6 +27,7 @@ export type CmdContext = {
   projectRoot: string;
   styler: Styler;
   mode: 'cli' | 'mcp';
+  docsOnly: boolean;
 };
 
 export type CmdResult = {

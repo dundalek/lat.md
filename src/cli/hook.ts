@@ -56,6 +56,7 @@ function makeHookCtx(latDir: string): CmdContext {
     projectRoot: dirname(latDir),
     styler: plainStyler,
     mode: 'cli',
+    docsOnly: false,
   };
 }
 
@@ -209,18 +210,17 @@ type StopStatus = {
 };
 
 async function getStopStatus(latDir: string): Promise<StopStatus> {
-  const md = await checkMd(latDir);
-  const code = await checkCodeRefs(latDir);
+  const projectRoot = dirname(latDir);
+  const md = await checkMd(latDir, { projectRoot });
+  const code = await checkCodeRefs(latDir, projectRoot);
   const indexErrors = await checkIndex(latDir);
-  const sectionErrors = await checkSections(latDir);
+  const sectionErrors = await checkSections(latDir, projectRoot);
   const totalErrors =
     md.errors.length +
     code.errors.length +
     indexErrors.length +
     sectionErrors.length;
   const checkFailed = totalErrors > 0;
-
-  const projectRoot = dirname(latDir);
   const { codeLines, latMdLines } = analyzeDiff(projectRoot);
   let needsSync = false;
   if (codeLines >= DIFF_THRESHOLD && latMdLines < LATMD_UPPER_THRESHOLD) {

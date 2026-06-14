@@ -20,20 +20,25 @@ function makeStyler(): Styler {
 
 export function resolveContext(opts: {
   dir?: string;
+  latDir?: string;
   color?: boolean;
+  docsOnly?: boolean;
 }): CmdContext {
   const color = opts.color !== false;
   if (!color) {
     process.env.NO_COLOR = '1';
   }
 
-  const latDir = findLatticeDir(opts.dir) ?? '';
+  const docsOnly = opts.docsOnly ?? false;
+  const dirName = opts.latDir;
+  const latDir = findLatticeDir(opts.dir, dirName) ?? '';
   if (!latDir) {
-    console.error(styleText('red', 'No lat.md directory found'));
+    const target = dirName ?? 'lat.md';
+    console.error(styleText('red', `No ${target} directory found`));
     console.error(styleText('dim', 'Run `lat init` to create one.'));
     process.exit(1);
   }
 
-  const projectRoot = dirname(latDir);
-  return { latDir, projectRoot, styler: makeStyler(), mode: 'cli' };
+  const projectRoot = docsOnly ? latDir : dirname(latDir);
+  return { latDir, projectRoot, styler: makeStyler(), mode: 'cli', docsOnly };
 }

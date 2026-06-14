@@ -41,10 +41,11 @@ export function parseFrontmatter(content: string): LatFrontmatter {
   return result;
 }
 
-export function findLatticeDir(from?: string): string | null {
+export function findLatticeDir(from?: string, dirName?: string): string | null {
+  const name = dirName ?? 'lat.md';
   let dir = resolve(from ?? process.cwd());
   while (true) {
-    const candidate = join(dir, 'lat.md');
+    const candidate = join(dir, name);
     if (existsSync(candidate) && statSync(candidate).isDirectory()) {
       return candidate;
     }
@@ -176,13 +177,16 @@ export function parseSections(
   return roots;
 }
 
-export async function loadAllSections(latticeDir: string): Promise<Section[]> {
-  const projectRoot = dirname(latticeDir);
+export async function loadAllSections(
+  latticeDir: string,
+  projectRoot?: string,
+): Promise<Section[]> {
+  const root = projectRoot ?? dirname(latticeDir);
   const files = await listLatticeFiles(latticeDir);
   const all: Section[] = [];
   for (const file of files) {
     const content = await readFile(file, 'utf-8');
-    all.push(...parseSections(file, content, projectRoot));
+    all.push(...parseSections(file, content, root));
   }
   return all;
 }

@@ -28,6 +28,7 @@ async function withDb<T>(
   key: string | undefined,
   progress: IndexProgress | undefined,
   fn: (db: Awaited<ReturnType<typeof openDb>>) => Promise<T>,
+  projectRoot?: string,
 ): Promise<T> {
   const db = openDb(latDir);
 
@@ -38,7 +39,7 @@ async function withDb<T>(
     const isEmpty = (countResult.rows[0].n as number) === 0;
 
     progress?.beforeIndex?.(isEmpty);
-    const stats = await indexSections(latDir, db, provider, key);
+    const stats = await indexSections(latDir, db, provider, key, projectRoot);
     progress?.afterIndex?.(stats, isEmpty);
 
     return await fn(db);
@@ -58,24 +59,32 @@ export async function runSearch(
   key: string | undefined,
   limit: number,
   progress?: IndexProgress,
+  projectRoot?: string,
 ): Promise<SearchResult> {
-  return withDb(latDir, provider, key, progress, async (db) => {
-    const results = await searchSections(db, query, provider, key, limit);
-    if (results.length === 0) {
-      return { query, matches: [] };
-    }
+  return withDb(
+    latDir,
+    provider,
+    key,
+    progress,
+    async (db) => {
+      const results = await searchSections(db, query, provider, key, limit);
+      if (results.length === 0) {
+        return { query, matches: [] };
+      }
 
-    const allSections = await loadAllSections(latDir);
-    const flat = flattenSections(allSections);
-    const byId = new Map(flat.map((s) => [s.id, s]));
+      const allSections = await loadAllSections(latDir, projectRoot);
+      const flat = flattenSections(allSections);
+      const byId = new Map(flat.map((s) => [s.id, s]));
 
-    const matches = results
-      .map((r) => byId.get(r.id))
-      .filter((s): s is NonNullable<typeof s> => !!s)
-      .map((s) => ({ section: s, reason: 'semantic match' }));
+      const matches = results
+        .map((r) => byId.get(r.id))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map((s) => ({ section: s, reason: 'semantic match' }));
 
-    return { query, matches };
-  });
+      return { query, matches };
+    },
+    projectRoot,
+  );
 }
 
 /**
@@ -86,8 +95,9 @@ export async function runIndex(
   provider: EmbeddingProvider,
   key: string | undefined,
   progress?: IndexProgress,
+  projectRoot?: string,
 ): Promise<void> {
-  await withDb(latDir, provider, key, progress, async () => {});
+  await withDb(latDir, provider, key, progress, async () => {}, projectRoot);
 }
 
 export function cliProgress(reindex: boolean, s: Styler): IndexProgress {
@@ -152,7 +162,7 @@ export async function searchCommand(
   }
 
   if (!query) {
-    await runIndex(ctx.latDir, provider, key, progress);
+    await runIndex(ctx.latDir, provider, key, progress, ctx.projectRoot);
     return { output: '' };
   }
 
@@ -163,6 +173,7 @@ export async function searchCommand(
     key,
     opts.limit,
     progress,
+    ctx.projectRoot,
   );
 
   if (result.matches.length === 0) {

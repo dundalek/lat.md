@@ -187,7 +187,9 @@ export async function getSection(
 
   // Find code back-references: @lat: comments pointing to this section
   const codeRefs: CodeBackRef[] = [];
-  const { refs: scannedRefs } = await scanCodeRefs(ctx.projectRoot);
+  const scannedRefs = ctx.docsOnly
+    ? []
+    : (await scanCodeRefs(ctx.projectRoot)).refs;
   for (const ref of scannedRefs) {
     const { resolved: codeResolved } = resolveRef(
       ref.target,
